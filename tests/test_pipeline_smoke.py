@@ -18,5 +18,7 @@ def test_run_demo_pipeline_writes_outputs() -> None:
     assert (out_dir / "step4_window_counts.parquet").exists()
 
     step1 = pl.read_parquet(out_dir / "step1_blacklist.parquet")
-    assert {"app_dt", "key_type", "key_value", "black_hit_ever"}.issubset(set(step1.columns))
+    assert {"app_dt", "key_type", "key_value", "PID", "ID", "black_hit_ever"}.issubset(set(step1.columns))
+    assert step1.schema["app_dt"] == pl.Int64
+    assert step1.schema["first_default_event_dt"] == pl.Int64
     shutil.rmtree(out_dir)

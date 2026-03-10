@@ -27,3 +27,24 @@ def test_build_default_event_key_fact_expands_only_legal_keys() -> None:
     assert ("pid", "p1") in pairs
     assert ("pid_id", "None|i2") not in pairs
     assert ("id", "i2") in pairs
+
+
+def test_build_default_event_key_fact_keeps_pid_and_id_columns() -> None:
+    df = pl.DataFrame(
+        {
+            "PID": ["p1"],
+            "ID": ["i1"],
+            "app_dt": ["20240101"],
+            "target": [1],
+            "mob": ["6"],
+            "Org_class_new": ["Bank"],
+            "Org_new": ["A"],
+            "perf_type": ["dpd"],
+            "threshold_dpd": ["30"],
+            "channel_new": ["api"],
+        }
+    )
+
+    result = build_default_event_key_fact(df)
+
+    assert {"PID", "ID", "key_type", "key_value", "event_dt"}.issubset(set(result.columns))

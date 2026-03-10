@@ -1,6 +1,7 @@
 import polars as pl
 
-from acct_rz.features_blacklist import build_blacklist_asof_features
+from acct_rz.features_blacklist import build_blacklist_asof_features, lookup_step2
+from acct_rz.query_snapshot import build_external_query_snapshot
 
 
 def test_build_blacklist_asof_features_tracks_first_and_latest_hits() -> None:
@@ -23,4 +24,31 @@ def test_build_blacklist_asof_features_tracks_first_and_latest_hits() -> None:
 
     assert result["black_hit_ever"].to_list() == [0, 1, 1]
     assert result["hit_event_cnt_asof_dt"].to_list() == [0, 1, 1]
-    assert result["first_default_event_dt"].dt.strftime("%Y-%m-%d").to_list() == [None, "2024-09-10", "2024-09-10"]
+    assert result["app_dt"].to_list() == [20240310, 20241001, 20250101]
+    assert result["first_default_event_dt"].to_list() == [None, 20240910, 20240910]
+
+
+def test_lookup_step2_returns_rows_for_arbitrary_query_dates() -> None:
+    history_df = pl.DataFrame(
+        {
+            "PID": ["p1"],
+            "ID": ["i1"],
+            "app_dt": ["20240101"],
+            "target": [1],
+            "mob": ["6"],
+            "Org_class_new": ["Bank"],
+            "Org_new": ["A"],
+            "perf_type": ["dpd"],
+            "threshold_dpd": ["30"],
+            "channel_new": ["api"],
+        }
+    )
+    query_df = pl.DataFrame({"app_dt": ["20241001"], "PID": ["p1"], "ID": ["i1"]})
+
+    result = lookup_step2(history_df, build_external_query_snapshot(query_df))
+
+    assert result["app_dt"].item() == 20241001
+    assert result["black_hit_ever"].item() == 1
+    assert result["first_default_event_dt"].item() == 20240701
+    assert result["PID"].item() == "p1"
+    assert result["ID"].item() == "i1"

@@ -4,68 +4,96 @@ import polars as pl
 
 from acct_rz.normalize import build_application_base
 
+BASE_KEY_COLUMNS = ["app_dt", "key_type", "key_value", "PID", "ID"]
+VALID_KEY_TYPES = ("pid_id", "id", "pid")
+
 
 def _clean_key_expr(name: str) -> pl.Expr:
     value = pl.col(name).cast(pl.Utf8, strict=False).str.strip_chars()
     return pl.when(value == "").then(pl.lit(None, dtype=pl.Utf8)).otherwise(value)
 
 
+def _normalize_key_type_expr() -> pl.Expr:
+    value = pl.col("key_type").cast(pl.Utf8, strict=False).str.strip_chars().str.to_lowercase()
+    return pl.when(value == "").then(pl.lit(None, dtype=pl.Utf8)).otherwise(value)
+
+
+def _with_clean_keys(df: pl.DataFrame) -> pl.DataFrame:
+    prepared = df
+    if "PID" not in prepared.columns:
+        prepared = prepared.with_columns(pl.lit(None, dtype=pl.Utf8).alias("PID"))
+    if "ID" not in prepared.columns:
+        prepared = prepared.with_columns(pl.lit(None, dtype=pl.Utf8).alias("ID"))
+    if "key_type" not in prepared.columns:
+        prepared = prepared.with_columns(pl.lit(None, dtype=pl.Utf8).alias("key_type"))
+    return prepared.with_columns(
+        _clean_key_expr("PID").alias("PID"),
+        _clean_key_expr("ID").alias("ID"),
+        _normalize_key_type_expr().alias("key_type"),
+    )
+
+
+def _selected_key_frame(prepared: pl.DataFrame, key_type: str) -> pl.DataFrame:
+    if key_type == "pid_id":
+        return prepared.filter(
+            (pl.col("key_type") == "pid_id") & pl.col("PID").is_not_null() & pl.col("ID").is_not_null()
+        ).with_columns(pl.concat_str(["PID", "ID"], separator="|").alias("key_value"))
+    if key_type == "id":
+        return prepared.filter((pl.col("key_type") == "id") & pl.col("ID").is_not_null()).with_columns(
+            pl.lit(None, dtype=pl.Utf8).alias("PID"),
+            pl.col("ID").alias("key_value"),
+        )
+    if key_type == "pid":
+        return prepared.filter((pl.col("key_type") == "pid") & pl.col("PID").is_not_null()).with_columns(
+            pl.lit(None, dtype=pl.Utf8).alias("ID"),
+            pl.col("PID").alias("key_value"),
+        )
+    raise ValueError(f"Unsupported key_type: {key_type}")
+
+
+def expand_all_key_types(df: pl.DataFrame, key_types: list[str] | None = None) -> pl.DataFrame:
+    prepared = _with_clean_keys(df)
+    selected_key_types = key_types or list(VALID_KEY_TYPES)
+    frames = []
+    for key_type in selected_key_types:
+        frame = prepared.with_columns(pl.lit(key_type).alias("key_type"))
+        frames.append(_selected_key_frame(frame, key_type))
+    if not frames:
+        return prepared.clear()
+    return pl.concat(frames, how="diagonal_relaxed")
+
+
+def build_selected_key_snapshot(df: pl.DataFrame) -> pl.DataFrame:
+    prepared = _with_clean_keys(df)
+    inferred_key_type = (
+        pl.when(pl.col("key_type").is_not_null())
+        .then(pl.col("key_type"))
+        .when(pl.col("PID").is_not_null() & pl.col("ID").is_not_null())
+        .then(pl.lit("pid_id"))
+        .when(pl.col("ID").is_not_null())
+        .then(pl.lit("id"))
+        .when(pl.col("PID").is_not_null())
+        .then(pl.lit("pid"))
+        .otherwise(pl.lit(None, dtype=pl.Utf8))
+    )
+    selected = prepared.with_columns(inferred_key_type.alias("key_type"))
+    frames = [_selected_key_frame(selected, key_type) for key_type in VALID_KEY_TYPES]
+    return pl.concat(frames, how="diagonal_relaxed").select(BASE_KEY_COLUMNS)
+
+
+def build_history_query_snapshot(df: pl.DataFrame, key_types: list[str] | None = None) -> pl.DataFrame:
+    base = build_application_base(df)
+    return (
+        expand_all_key_types(base, key_types=key_types)
+        .select(BASE_KEY_COLUMNS)
+        .unique()
+        .sort("app_dt", "key_type", "key_value", "PID", "ID")
+    )
+
+
 def expand_keys(df: pl.DataFrame) -> pl.DataFrame:
-    """展开三种主键口径。
-
-    参数:
-        df: 已标准化或兼容标准化字段的数据表。
-
-    返回:
-        增加 `key_type`、`key_value` 的长表。
-
-    规则:
-        `pid_id` 需要 `PID` 和 `ID` 同时非空；`pid`、`id` 各自只要求对应字段非空。
-
-    示例:
-        `PID=p1, ID=i1` 会展开成 `pid_id=p1|i1`、`pid=p1`、`id=i1`。
-
-    实现说明:
-        通过三段过滤后的长表拼接，避免三套下游逻辑。
-    """
-
-    prepared = df.with_columns(
-        _clean_key_expr("PID").alias("PID_clean"),
-        _clean_key_expr("ID").alias("ID_clean"),
-    )
-    pid_id = prepared.filter(pl.col("PID_clean").is_not_null() & pl.col("ID_clean").is_not_null()).with_columns(
-        pl.lit("pid_id").alias("key_type"),
-        pl.concat_str(["PID_clean", "ID_clean"], separator="|").alias("key_value"),
-    )
-    id_only = prepared.filter(pl.col("ID_clean").is_not_null()).with_columns(
-        pl.lit("id").alias("key_type"),
-        pl.col("ID_clean").alias("key_value"),
-    )
-    pid_only = prepared.filter(pl.col("PID_clean").is_not_null()).with_columns(
-        pl.lit("pid").alias("key_type"),
-        pl.col("PID_clean").alias("key_value"),
-    )
-    return pl.concat([pid_id, id_only, pid_only], how="diagonal_relaxed").drop("PID_clean", "ID_clean")
+    return expand_all_key_types(df)
 
 
 def build_application_key_snapshot(df: pl.DataFrame) -> pl.DataFrame:
-    """构建申请日快照键表。
-
-    参数:
-        df: 原始申请明细。
-
-    返回:
-        唯一化后的申请键快照，粒度为 `app_dt + key_type + key_value`。
-
-    规则:
-        同一申请日同一键只保留一行，避免下游连接时重复放大计数。
-
-    示例:
-        同一天同一 `pid_id` 多次出现时，只保留一个快照键。
-
-    实现说明:
-        先走标准化和键展开，再按快照粒度去重。
-    """
-
-    base = build_application_base(df)
-    return expand_keys(base).select("app_dt", "key_type", "key_value").unique().sort("app_dt", "key_type", "key_value")
+    return build_history_query_snapshot(df)
