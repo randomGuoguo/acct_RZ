@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acct-rz"
+version = "0.1.0"
+description = "Offline-first Ydata default feature products."
+requires-python = ">=3.9"
+dependencies = ["polars>=1.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
