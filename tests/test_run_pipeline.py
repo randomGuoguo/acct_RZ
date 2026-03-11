@@ -48,6 +48,7 @@ def test_main_supports_query_mode(monkeypatch) -> None:
         calls.append((history_df.shape, query_df.shape, step3_format))
         row = {"app_dt": [None], "key_type": ["pid_id"], "key_value": ["p1|i1"], "PID": ["p1"], "ID": ["i1"]}
         return {
+            "blacklist_features": pl.DataFrame({**row, "ever_default_flag": [1], "default_cnt_36m": [1]}),
             "step1": pl.DataFrame({**row, "black_hit_ever": [1], "first_default_event_dt": [None]}),
             "step2": pl.DataFrame(
                 {**row, "black_hit_ever": [1], "first_default_event_dt": [None], "latest_default_event_dt": [None], "hit_event_cnt_asof_dt": [1]}
@@ -80,5 +81,6 @@ def test_main_supports_query_mode(monkeypatch) -> None:
 
     assert result == 0
     assert calls == [((1, 5), (1, 3), "long")]
+    assert (output_dir / "blacklist_features.parquet").exists()
     assert (output_dir / "step1_blacklist.parquet").exists()
     shutil.rmtree(output_dir)

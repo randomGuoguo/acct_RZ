@@ -2,22 +2,29 @@ from __future__ import annotations
 
 import polars as pl
 
+from acct_rz.agg_lifetime import build_lifetime_aggregates
 from acct_rz.keys import BASE_KEY_COLUMNS, build_history_query_snapshot
-from acct_rz.lookup_base import format_final_date_columns, resolve_query_snapshot_and_event_fact, with_matched_event_dt
+from acct_rz.lookup_base import format_final_date_columns, resolve_query_snapshot_and_event_fact
 
 
 def _lookup_blacklist_features(query_snapshot: pl.DataFrame, event_fact: pl.DataFrame) -> pl.DataFrame:
-    events = event_fact.select("key_type", "key_value", "event_dt")
-    matched = with_matched_event_dt(query_snapshot.join(events, on=["key_type", "key_value"], how="left"))
     return (
-        matched.group_by(BASE_KEY_COLUMNS)
-        .agg(
-            (pl.col("matched_event_dt").is_not_null().sum() > 0).cast(pl.Int8).alias("black_hit_ever"),
-            pl.col("matched_event_dt").min().alias("first_default_event_dt"),
-            pl.col("matched_event_dt").max().alias("latest_default_event_dt"),
-            pl.col("matched_event_dt").is_not_null().sum().alias("hit_event_cnt_asof_dt"),
+        build_lifetime_aggregates(query_snapshot, event_fact)
+        .rename(
+            {
+                "ever_default_flag": "black_hit_ever",
+                "first_default_dt": "first_default_event_dt",
+                "latest_default_dt": "latest_default_event_dt",
+                "default_cnt_lifetime": "hit_event_cnt_asof_dt",
+            }
         )
-        .sort(*BASE_KEY_COLUMNS)
+        .select(
+            *BASE_KEY_COLUMNS,
+            "black_hit_ever",
+            "first_default_event_dt",
+            "latest_default_event_dt",
+            "hit_event_cnt_asof_dt",
+        )
     )
 
 

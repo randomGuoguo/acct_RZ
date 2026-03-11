@@ -1,5 +1,23 @@
 # TASK2
 
+## Product Contract Update
+
+Primary output:
+- `blacklist_features.parquet`
+
+Primary product boundary:
+- one stable wide table assembled from aggregation modules and label-family modules
+- main fields include `ever_default_flag`, rolling-window counts, and stable org/perf breakdown features
+
+Compatibility outputs only:
+- `step1`
+- `step2`
+- `step3`
+- `step4`
+
+V1 scope guard:
+- do not expand `sample_flag` into the main wide table
+
 ## 0. 文档目的
 
 本文件用于提供项目当前统一状态，供后续子项目、自动化流程和新会话直接读取。
@@ -147,8 +165,24 @@
 | --- | --- |
 | 运行环境 | `dl_new` |
 | 最近全量测试命令 | `conda run -n dl_new python -m pytest -q` |
-| 最近全量测试结果 | `22 passed` |
+| 最近全量测试结果 | `22 passed in 0.37s`（2026-03-10） |
+| 测试文件 / 用例数 | `12` 个测试文件 / `22` 个测试用例 |
 | 重点修复验证 | 数值型查询日期 `20251006` 已正确输出为 `20251006` |
+
+| 测试文件 | 覆盖的测试样例与验证点 |
+| --- | --- |
+| `tests/test_bootstrap.py` | `test_package_layout_exists`：校验 `pyproject.toml` 与 `src/acct_rz/__init__.py` 存在，保证包结构完整。 |
+| `tests/test_normalize.py` | `test_build_application_base_applies_default_rules`：校验 `mob` 默认补齐、`is_default` 判定与 `event_dt` 推导规则。 |
+| `tests/test_keys.py` | `test_build_selected_key_snapshot_keeps_split_key_columns`、`test_expand_all_key_types_nulls_irrelevant_split_columns`：校验 `pid_id` / `pid` / `id` 三类 key 的拆分、保留与空列处理。 |
+| `tests/test_events.py` | `test_build_default_event_key_fact_expands_only_legal_keys`、`test_build_default_event_key_fact_keeps_pid_and_id_columns`：校验违约事件 key 扩展只保留合法组合，且输出保留 `PID`、`ID`、`event_dt`。 |
+| `tests/test_features_blacklist.py` | `test_build_blacklist_asof_features_tracks_first_and_latest_hits`、`test_lookup_step2_returns_rows_for_arbitrary_query_dates`：校验 step2 黑名单特征的首次命中日、命中次数、任意查询日回查与 `PID`/`ID` 透传。 |
+| `tests/test_features_org_blacklist.py` | `test_build_org_class_blacklist_features_keeps_org_class_separate`、`test_lookup_step3_returns_long_form_org_rows_for_arbitrary_queries`：校验 step3 按机构类别隔离统计，并支持任意查询日返回 long form 机构维度结果。 |
+| `tests/test_features_windows.py` | `test_build_window_count_features_uses_event_date_boundaries`、`test_lookup_step4_returns_zero_rows_for_unseen_keys`：校验 step4 以事件日为窗口边界统计 3M/12M 次数，且未命中 key 返回 0 值结果。 |
+| `tests/test_query_snapshot.py` | `test_build_external_query_snapshot_infers_key_type`、`test_build_external_query_snapshot_rejects_invalid_key_rows`、`test_build_external_query_snapshot_honors_explicit_key_type`、`test_build_external_query_snapshot_parses_numeric_yyyymmdd`：校验查询快照自动识别 key、拒绝无效行、尊重显式 `key_type`，并修复数值型 `YYYYMMDD` 解析。 |
+| `tests/test_query_lookup.py` | `test_lookup_all_steps_returns_dict_of_step_outputs`：校验统一查询入口同时返回 `step1`-`step4` 四份结果，且 step1 命中字段正确。 |
+| `tests/test_pipeline_smoke.py` | `test_run_demo_pipeline_writes_outputs`：校验 demo pipeline 输出 `step1`-`step4` 四个 parquet 文件，并验证 step1 关键字段与数据类型。 |
+| `tests/test_run_pipeline.py` | `test_main_uses_default_paths`、`test_main_accepts_custom_paths`、`test_main_supports_query_mode`：校验 CLI 默认路径、自定义输入输出路径，以及 `query` 模式下文件写出与参数透传。 |
+| `tests/test_readme.py` | `test_readme_mentions_test_and_pipeline_commands`：校验 `README.md` 已覆盖测试命令、pipeline 用法、查询入口与 CLI 说明。 |
 
 ## 8. 数据与目录
 
@@ -175,9 +209,8 @@
 
 后续新会话建议按以下顺序读取：
 
-1. `TASK2.md`
-2. `docs/plans/2026-03-10-ydata-query-lookup-status.md`
-3. `README.md`
+1. `architecture.md`：记录了当前整个项目的架构
+2. `docs/plans/2026-03-10-ydata-query-lookup-status.md`：记录了上一次迭代的内容和当前项目状态
 
 补充说明：
 

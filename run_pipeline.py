@@ -53,6 +53,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def _write_step_outputs(outputs: dict[str, pl.DataFrame], output_path: Path) -> None:
     output_path.mkdir(parents=True, exist_ok=True)
+    if "blacklist_features" in outputs:
+        outputs["blacklist_features"].write_parquet(output_path / "blacklist_features.parquet")
     outputs["step1"].write_parquet(output_path / "step1_blacklist.parquet")
     outputs["step2"].write_parquet(output_path / "step2_traceback.parquet")
     outputs["step3"].write_parquet(output_path / "step3_org_blacklist.parquet")

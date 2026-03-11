@@ -7,3 +7,5 @@ def test_readme_mentions_test_and_pipeline_commands() -> None:
     assert "run_demo_pipeline" in text
     assert "lookup_all_steps" in text
     assert "run_pipeline.py" in text
+    assert "blacklist_features.parquet" in text
+    assert "ever_default_flag" in text

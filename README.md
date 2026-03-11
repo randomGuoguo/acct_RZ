@@ -6,6 +6,19 @@
 
 `docs/plans/2026-03-10-ydata-query-lookup-status.md`
 
+## Primary Product
+
+The primary output is `blacklist_features.parquet`.
+
+This is the model-facing wide table and includes fields such as:
+- `ever_default_flag`
+- `default_cnt_3m` through `default_cnt_36m`
+- stable breakdown fields such as `default_cnt_12m_bank` and `default_cnt_12m_dpd`
+
+`step1` through `step4` remain available only as compatibility outputs.
+
+V1 does not expand `sample_flag` into the main wide table.
+
 ## 测试命令
 
 运行全量测试：
@@ -22,6 +35,9 @@
 
 `conda run -n dl_new python run_pipeline.py --input data/demo/y.csv --output data/result`
 
+主产物文件：
+`data/result/blacklist_features.parquet`
+
 核心实现文件：
 
 `src/acct_rz/pipeline.py`
@@ -35,6 +51,8 @@
 Python 入口：
 
 `lookup_all_steps`
+
+Query mode returns `blacklist_features` plus compatibility outputs `step1` through `step4`.
 
 模块位置：
 

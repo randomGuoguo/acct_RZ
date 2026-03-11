@@ -22,7 +22,16 @@ def build_application_base(df: pl.DataFrame) -> pl.DataFrame:
         先做轻量类型标准化，再按业务规则生成衍生列并过滤非法日期。
     """
 
-    app_dt_expr = pl.col("app_dt").cast(pl.Utf8, strict=False).str.strptime(pl.Date, "%Y%m%d", strict=False)
+    app_dt_text = pl.col("app_dt").cast(pl.Utf8, strict=False).str.strip_chars()
+    app_dt_expr = pl.coalesce(
+        [
+            app_dt_text.str.strptime(pl.Date, "%Y%m%d", strict=False),
+            app_dt_text.str.strptime(pl.Date, "%Y-%m-%d", strict=False),
+            pl.when(pl.col("app_dt").cast(pl.Date, strict=False).is_not_null())
+            .then(pl.col("app_dt").cast(pl.Date, strict=False))
+            .otherwise(pl.lit(None, dtype=pl.Date)),
+        ]
+    )
     mob_text = pl.col("mob").cast(pl.Utf8, strict=False).str.strip_chars()
     mob_filled = (
         pl.when(mob_text.is_null() | (mob_text == ""))

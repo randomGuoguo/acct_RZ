@@ -22,7 +22,8 @@ def test_lookup_all_steps_returns_dict_of_step_outputs() -> None:
 
     result = lookup_all_steps(history_df, query_df)
 
-    assert set(result.keys()) == {"step1", "step2", "step3", "step4"}
+    assert set(result.keys()) == {"blacklist_features", "step1", "step2", "step3", "step4"}
+    assert "ever_default_flag" in result["blacklist_features"].columns
     assert result["step1"]["app_dt"].item() == 20241001
     assert result["step1"]["first_default_event_dt"].item() == 20240701
     assert result["step1"]["black_hit_ever"].item() == 1

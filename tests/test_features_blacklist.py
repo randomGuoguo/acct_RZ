@@ -52,3 +52,23 @@ def test_lookup_step2_returns_rows_for_arbitrary_query_dates() -> None:
     assert result["first_default_event_dt"].item() == 20240701
     assert result["PID"].item() == "p1"
     assert result["ID"].item() == "i1"
+
+
+def test_lookup_step2_still_matches_compatibility_contract() -> None:
+    history_df = pl.DataFrame(
+        {
+            "PID": ["p1"],
+            "ID": ["i1"],
+            "app_dt": ["2024-01-01"],
+            "target": [1],
+            "mob": [0],
+            "Org_class_new": ["Bank"],
+            "Org_new": ["A"],
+            "perf_type": ["dpd"],
+        }
+    )
+    query_snapshot = build_external_query_snapshot(pl.DataFrame({"app_dt": ["2025-01-01"], "PID": ["p1"]}))
+
+    result = lookup_step2(history_df, query_snapshot)
+
+    assert {"black_hit_ever", "latest_default_event_dt", "hit_event_cnt_asof_dt"}.issubset(set(result.columns))
